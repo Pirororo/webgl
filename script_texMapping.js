@@ -293,14 +293,13 @@ onload = function(){
             //第一引数は bindTexture でも使ったテクスチャの種類を指定します。ここでも組み込み定数 gl.TEXTURE_2D を使えば問題ありません。第二引数はミップマップのレベルを指定、第三引数と第四引数には同じ組み込み定数 gl.RGBA を指定、第五引数の gl.UNSIGNED_BYTE についても特別な理由がない限りこのままで大丈夫です。
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
             // ミップマップを生成
+            //あらかじめ小さいサイズの画像もつくっておく（イメージ縮小表示のときのみに対応）
             gl.generateMipmap(gl.TEXTURE_2D);
             // テクスチャのバインドを無効化
             gl.bindTexture(gl.TEXTURE_2D, null);
             // 生成したテクスチャをグローバル変数に代入
             texture = tex;
         }
-
-        
     }
 
 }

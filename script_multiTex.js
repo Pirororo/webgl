@@ -1,29 +1,19 @@
-//クオータ二オンとminMatrixb.js
-//下記のm.multiply(mMatrix, qMatrix, mMatrix);の位置に気をつける！！
-
-// // トーラスのモデル座標変換行列の生成
-// m.identity(mMatrix);
-// // m.translate(mMatrix, [10.0, 2.0, 0.0], mMatrix);//ここでかくとこの位置で回る
-// m.multiply(mMatrix, qMatrix, mMatrix);
-// m.translate(mMatrix, [0.0, 0.0, -5.0], mMatrix);//ここでかくとここをスタートにして原点の周りをまわる
-// m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-// m.inverse(mMatrix, invMatrix);
-
+//マルチテクスチャ
+//テクスチャが複数あるときは、activeTextureで有効化したいものをdrawでその都度わけてuniformでおくる！！！！！！// gl.activeTexture(gl.TEXTURE0);
 
 
 onload = function(){
 
     // チェックボックスの参照を取得
-	var eRange = document.getElementById('range');
+	var che_culling = document.getElementById('cull');
+    var che_depth_test = document.getElementById('depth');
 
     //canvas 要素への参照を得る *****
     var c = document.getElementById("canvas");
     c.width = 500;
     c.height = 300;
 
-    //コンテキストとは
-    //webglコンテキストは
-    //canvas 要素からコンテキストオブジェクトを取得するためのメソッドで、引数には文字列で取得したいコンテキストの名称を渡します。
+    //canvas 要素からコンテキストオブジェクトを取得する
     var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
 
 
@@ -38,50 +28,66 @@ onload = function(){
     // attributeLocationを配列に取得
     var attLocation = new Array(3);
     attLocation[0] = gl.getAttribLocation(prg, 'position');
-    attLocation[1] = gl.getAttribLocation(prg, 'normal');
-    attLocation[2] = gl.getAttribLocation(prg, 'color');
-    // attributeの要素数(この場合は xyz の3要素)
+    attLocation[1] = gl.getAttribLocation(prg, 'color');
+    attLocation[2] = gl.getAttribLocation(prg, 'textureCoord');
+
     // attributeの要素数を配列に格納
     var attStride = new Array(3);
     attStride[0] = 3;
-    attStride[1] = 3;
-    attStride[2] = 4;
+    attStride[1] = 4;
+    attStride[2] = 2;
 
-    // モデルデータを用意 *****
-    var torusData = torus(64, 64, 0.5, 1.5);
+    //テクスチャをはるための頂点データ
+    var texPos = [
+        -1.0, 1.0, 0.0,
+        1.0, 1.0, 0.0,
+        -1.0, -1.0, 0.0,
+        1.0, -1.0, 0.0,
+    ];
+    var texCol = [ 
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0
+    ];
+    var texTxcrd = [
+        0.0, 0.0,
+        1.0, 0.0,
+        0.0, 1.0,
+        1.0, 1.0
+    ];
+    var texIdx = [
+        0,2,1,
+        3,1,2
+    ];
 
-    //頂点バッファ( VBO )の生成と通知 *****
-    var tPosition = create_vbo(torusData.p);
-    var tNormal = create_vbo(torusData.n);
-    var tColor = create_vbo(torusData.c);
-    var tVBOList = [tPosition, tNormal, tColor];
-    var tIndex = create_ibo(torusData.i);
+    var texPosition = create_vbo(texPos);
+    var texColor = create_vbo(texCol);
+    var texTextureCoord = create_vbo(texTxcrd);
+    var texVBOList = [texPosition, texColor, texTextureCoord];
+    var texIndex = create_ibo(texIdx);
 
-    // VBOをバインド
-    set_attribute(tVBOList, attLocation, attStride);
-    // IBOをバインド
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tIndex);
-
+    // VBOとIBOをセット   ************
+    set_attribute(texVBOList, attLocation, attStride);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, texIndex);
 
     // uniformLocationの取得
     var uniLocation = new Array();//増えたら配列にする！
     uniLocation[0] = gl.getUniformLocation(prg, 'mvpMatrix');
-    uniLocation[1] = gl.getUniformLocation(prg, 'mMatrix');
-    uniLocation[2] = gl.getUniformLocation(prg, 'invMatrix');//逆行列
-    // uniLocation[2] = gl.getUniformLocation(prg, 'lightDirection');//平行光の方向
-    uniLocation[3] = gl.getUniformLocation(prg, 'lightPosition');//点光源の位置
-    uniLocation[4] = gl.getUniformLocation(prg, 'ambientColor');//環境光の色
-    uniLocation[5] = gl.getUniformLocation(prg, 'camPosition');//目線の方向
+    uniLocation[1] = gl.getUniformLocation(prg, 'texture0');
+    uniLocation[2] = gl.getUniformLocation(prg, 'texture1');
 
 
+    // // 有効にするテクスチャユニットを指定 //テクスチャが複数あるときはdrawでアクティブにしたいものをその都度わける！！！！！！
+    // gl.activeTexture(gl.TEXTURE0);
+    //テクスチャ用変数の宣言
+    var texture0 = null;
+    var texture1 = null;
+    // テクスチャオブジェクトの生成
+    create_texture('data/webgl0.png', 0);
+    create_texture('data/webgl1.png', 1);
 
-    // 各種クォータニオンの生成と初期化
-    var q = new qtnIV();
-    var aQuaternion = q.identity(q.create());
-    var bQuaternion = q.identity(q.create());
-    var sQuaternion = q.identity(q.create());
 
-    
     //座標変換行列の生成と通知 *****
     //拡大縮小 > 回転 > 移動、という順序で
     // matIVオブジェクト（minMatrix.jsのオブジェクト）を生成
@@ -92,27 +98,9 @@ onload = function(){
     var pMatrix = m.identity(m.create());   // プロジェクション変換行列
     var tmpMatrix = m.identity(m.create()); // pvまでの座標変換行列
     var mvpMatrix = m.identity(m.create()); // 最終座標変換行列
-    var invMatrix = m.identity(m.create()); // 逆行列
-
-    var qMatrix = m.identity(m.create());//ここでかく！！！！！！！
-
-
-    // // 平行光源の向き
-    // var lightDirection = [-0.5, 0.5, 0.5];//向きだからアルファいらない
-    // 点光源の位置
-    var lightPosition = [0.0, 0.0, 0.0];
-    // 環境光の色
-    var ambientColor = [0.1, 0.1, 0.1, 1.0];//アルファ1.0
-    // //  視点ベクトルの向き
-    // var eyeDirection = [0.0, 0.0, 20.0];
-    // カメラの座標
-    var camPosition = [0.0, 0.0, 20.0];
-    // カメラの上方向を表すベクトル
-    var camUpDirection　= [0.0, 1.0, 0.0];
-
 
     // ビュー×プロジェクション座標変換行列
-    m.lookAt(camPosition, [0, 0, 0], camUpDirection, vMatrix);
+    m.lookAt([0.0, 0.0, 3.0], [0, 0, 0], [0, 1, 0], vMatrix);
     m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
     m.multiply(pMatrix, vMatrix, tmpMatrix);
 
@@ -124,59 +112,46 @@ onload = function(){
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);//gl.LEQUAL
 
+    // 恒常ループ
+    (function(){
+
+        // canvasを初期化する色を設定する
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clearDepth(1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        count++;
+
+        // テクスチャユニットを指定してバインドし登録する
+        //ポイントはテクスチャユニットの有効化と、テクスチャオブジェクトのバインド、シェーダへのユニット番号の登録が全てワンセットになっていること
+        //また、 activeTexture メソッド内で指定しているテクスチャユニット番号と、 uniform1i メソッドの第二引数に指定する整数値が、必ず一致するということに注意しましょう。
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texture0);
+        gl.uniform1i(uniLocation[1], 0);
+
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, texture1);
+        gl.uniform1i(uniLocation[2], 1);
 
 
-    	// 恒常ループ
-	(function(){
-		// canvasを初期化
-		gl.clearColor(0.0, 0.0, 0.0, 1.0);
-		gl.clearDepth(1.0);
-		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-		
-		// カウンタをインクリメントしてラジアンを算出
-		count++;
-		var rad = (count % 360) * Math.PI / 180;
-		
-		// 経過時間係数を算出
-		var time = eRange.value / 100;
-		
-		// 回転クォータニオンの生成
-		q.rotate(rad, [1.0, 0.0, 0.0], aQuaternion);
-		q.rotate(rad, [0.0, 1.0, 0.0], bQuaternion);
-		q.slerp(aQuaternion, bQuaternion, time, sQuaternion);
-		
-		// モデルのレンダリング
-		ambientColor = [0.5, 0.0, 0.0, 1.0];
-		draw(aQuaternion);
-		ambientColor = [0.0, 0.5, 0.0, 1.0];
-		draw(bQuaternion);
-		ambientColor = [0.0, 0.0, 0.5, 1.0];
-		draw(sQuaternion);
+        // カウンタを元にラジアンと各種座標を算出
+        var rad = (count % 360) * Math.PI / 180;
+        // var tx = Math.cos(rad) * 3.5;
+        // var ty = Math.sin(rad) * 3.5;
+        // var tz = Math.sin(rad) * 3.5;
 
-        
-        function draw(qtn){
 
-            //行列matIVへの変換(クォータニオンを行列に適用)
-            q.toMatIV(qtn, qMatrix);
+        // モデル座標変換行列の生成
+		m.identity(mMatrix);
+        // m.translate(mMatrix, [tx, -ty, -tz], mMatrix);
+        m.rotate(mMatrix, rad, [1, 1, 0], mMatrix);
+        m.multiply(tmpMatrix, mMatrix, mvpMatrix);
 
-            // トーラスのモデル座標変換行列の生成
-            m.identity(mMatrix);
-            // m.translate(mMatrix, [10.0, 2.0, 0.0], mMatrix);//ここでかくとこの位置で回る
-            m.multiply(mMatrix, qMatrix, mMatrix);
-            m.translate(mMatrix, [0.0, 0.0, -5.0], mMatrix);//ここでかくとここをスタートにして原点の周りをまわる
-            m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-            m.inverse(mMatrix, invMatrix);
+        gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
 
-            gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
-            gl.uniformMatrix4fv(uniLocation[1], false, mMatrix);
-            gl.uniformMatrix4fv(uniLocation[2], false, invMatrix);
-            gl.uniform3fv(uniLocation[3], lightPosition);
-            gl.uniform4fv(uniLocation[4], ambientColor);
-            gl.uniform3fv(uniLocation[5], camPosition);
 
-            //この第二引数は生の配列を入れる。生成したvboのtIndexでは真っ暗になる。
-            gl.drawElements(gl.TRIANGLES, torusData.i.length, gl.UNSIGNED_SHORT, 0);
-        }
+        //この第二引数は生の配列を入れる。生成したvboのtIndexでは真っ暗になる。
+        gl.drawElements(gl.TRIANGLES, texIdx.length, gl.UNSIGNED_SHORT, 0);
 
         // コンテキストの再描画
         gl.flush();
@@ -184,9 +159,6 @@ onload = function(){
         setTimeout(arguments.callee, 1000 / 30);
 
     })();
-
-
-
 
 
 
@@ -303,6 +275,40 @@ onload = function(){
         return ibo;
     }
 
-}
+    // テクスチャを生成する関数,ソースは画像のアドレス
+    function create_texture(source, number){
+        // イメージオブジェクトの生成
+        var img = new Image();
+        // イメージオブジェクトのソースを指定
+        img.src = source;
 
+        // データのオンロードをトリガーにする
+        //画像が読み込まれたと同時にテクスチャに関する処理が自動的に実行されるようになります。
+        img.onload = function(){
+            //テクスチャオブジェクトの生成
+            var tex = gl.createTexture();
+            //テクスチャオブジェクトをwebglにバインドする
+            //第一引数にはテクスチャの種類を表す組み込み定数を指定しますが、いわゆる普通の二次元画像フォーマットであればこの引数には gl.TEXTURE_2D を常に指定します。第二引数にはバインドするテクスチャオブジェクトを指定
+            gl.bindTexture(gl.TEXTURE_2D,tex);
+            //画像をテクスチャオブジェクトにバインド
+            //第一引数は bindTexture でも使ったテクスチャの種類を指定します。ここでも組み込み定数 gl.TEXTURE_2D を使えば問題ありません。第二引数はミップマップのレベルを指定、第三引数と第四引数には同じ組み込み定数 gl.RGBA を指定、第五引数の gl.UNSIGNED_BYTE についても特別な理由がない限りこのままで大丈夫です。
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+            // ミップマップを生成
+            gl.generateMipmap(gl.TEXTURE_2D);
+            // テクスチャのバインドを無効化
+            gl.bindTexture(gl.TEXTURE_2D, null);
+            // 生成したテクスチャをグローバル変数に代入
+            switch(number){
+                case 0:
+                    texture0 = tex;
+                    break;
+                case 1:
+                    texture1 = tex;
+                    break;
+                default:
+                    break;
+            }
+        };
+    }
 
+};

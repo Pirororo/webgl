@@ -1,23 +1,31 @@
 //クオータ二オンとminMatrixb.js
-//下記のm.multiply(mMatrix, qMatrix, mMatrix);の位置に気をつける！！
+//クオータ二オンでカメラぐるぐる。
+//minMatrix.jsではなく[b]がつく違うファイル！！
+//qtnIVクラスを持っており、クオータ二オンに使う！
+// 各種四元数の生成と初期化
+// var q = new qtnIV();
+// var xQuaternion = q.identity(q.create());
+//各種四元数の算出
+// q.rotate(0.1* rad, [0,1,0], xQuaternion);
+//クオータ二オンをvec3へ変更
+//q.toVecIII([0.0, 0.0, 10.0], xQuaternion, camPosition);
+//q.toVecIII([0.0, 1.0, 0.0], xQuaternion, camUpDirection);
 
-// // トーラスのモデル座標変換行列の生成
-// m.identity(mMatrix);
-// // m.translate(mMatrix, [10.0, 2.0, 0.0], mMatrix);//ここでかくとこの位置で回る
-// m.multiply(mMatrix, qMatrix, mMatrix);
-// m.translate(mMatrix, [0.0, 0.0, -5.0], mMatrix);//ここでかくとここをスタートにして原点の周りをまわる
-// m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-// m.inverse(mMatrix, invMatrix);
+
 
 
 
 onload = function(){
 
     // チェックボックスの参照を取得
-	var eRange = document.getElementById('range');
+	var che_culling = document.getElementById('cull');
+    var che_depth_test = document.getElementById('depth');
+    
+
 
     //canvas 要素への参照を得る *****
     var c = document.getElementById("canvas");
+
     c.width = 500;
     c.height = 300;
 
@@ -49,18 +57,31 @@ onload = function(){
 
     // モデルデータを用意 *****
     var torusData = torus(64, 64, 0.5, 1.5);
+    var sphereData = sphere(64, 64, 2.0);
 
     //頂点バッファ( VBO )の生成と通知 *****
+    //頂点バッファー処理
+    //1.頂点の各情報をいったん配列に格納
+    //2.WebGL のメソッドを使って VBO を生成
+    //3.WebGL のメソッドを使い VBO に配列のデータを転送
+    //4.頂点シェーダ内の attribute 変数と VBO を紐付ける
     var tPosition = create_vbo(torusData.p);
     var tNormal = create_vbo(torusData.n);
     var tColor = create_vbo(torusData.c);
     var tVBOList = [tPosition, tNormal, tColor];
     var tIndex = create_ibo(torusData.i);
 
-    // VBOをバインド
-    set_attribute(tVBOList, attLocation, attStride);
-    // IBOをバインド
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tIndex);
+    var sPosition = create_vbo(sphereData.p);
+    var sNormal = create_vbo(sphereData.n);
+    var sColor = create_vbo(sphereData.c);
+    var sVBOList = [sPosition, sNormal, sColor];
+    var sIndex = create_ibo(sphereData.i);
+
+    // // VBOをバインド
+    // set_attribute(tVBOs, attLocation, attStride);
+    // // IBOをバインド
+    // gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tIndex);
+    
 
 
     // uniformLocationの取得
@@ -75,13 +96,6 @@ onload = function(){
 
 
 
-    // 各種クォータニオンの生成と初期化
-    var q = new qtnIV();
-    var aQuaternion = q.identity(q.create());
-    var bQuaternion = q.identity(q.create());
-    var sQuaternion = q.identity(q.create());
-
-    
     //座標変換行列の生成と通知 *****
     //拡大縮小 > 回転 > 移動、という順序で
     // matIVオブジェクト（minMatrix.jsのオブジェクト）を生成
@@ -94,8 +108,10 @@ onload = function(){
     var mvpMatrix = m.identity(m.create()); // 最終座標変換行列
     var invMatrix = m.identity(m.create()); // 逆行列
 
-    var qMatrix = m.identity(m.create());//ここでかく！！！！！！！
-
+    //クオータにオン
+    // 各種四元数の生成と初期化
+    var q = new qtnIV();
+    var xQuaternion = q.identity(q.create());
 
     // // 平行光源の向き
     // var lightDirection = [-0.5, 0.5, 0.5];//向きだからアルファいらない
@@ -106,15 +122,11 @@ onload = function(){
     // //  視点ベクトルの向き
     // var eyeDirection = [0.0, 0.0, 20.0];
     // カメラの座標
-    var camPosition = [0.0, 0.0, 20.0];
+    var camPosStart = [0.0, 0.0, 10.0];
+	var camPosition = camPosStart;
     // カメラの上方向を表すベクトル
-    var camUpDirection　= [0.0, 1.0, 0.0];
-
-
-    // ビュー×プロジェクション座標変換行列
-    m.lookAt(camPosition, [0, 0, 0], camUpDirection, vMatrix);
-    m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
-    m.multiply(pMatrix, vMatrix, tmpMatrix);
+    var camUpDirStart = [0.0, 1.0, 0.0];
+    var camUpDirection = camUpDirStart;
 
 
     // カウンタの宣言
@@ -124,59 +136,83 @@ onload = function(){
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);//gl.LEQUAL
 
-
-
-    	// 恒常ループ
-	(function(){
-		// canvasを初期化
-		gl.clearColor(0.0, 0.0, 0.0, 1.0);
-		gl.clearDepth(1.0);
-		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-		
-		// カウンタをインクリメントしてラジアンを算出
-		count++;
-		var rad = (count % 360) * Math.PI / 180;
-		
-		// 経過時間係数を算出
-		var time = eRange.value / 100;
-		
-		// 回転クォータニオンの生成
-		q.rotate(rad, [1.0, 0.0, 0.0], aQuaternion);
-		q.rotate(rad, [0.0, 1.0, 0.0], bQuaternion);
-		q.slerp(aQuaternion, bQuaternion, time, sQuaternion);
-		
-		// モデルのレンダリング
-		ambientColor = [0.5, 0.0, 0.0, 1.0];
-		draw(aQuaternion);
-		ambientColor = [0.0, 0.5, 0.0, 1.0];
-		draw(bQuaternion);
-		ambientColor = [0.0, 0.0, 0.5, 1.0];
-		draw(sQuaternion);
+    // 恒常ループ
+    (function(){
 
         
-        function draw(qtn){
+        // canvasを初期化する色を設定する
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clearDepth(1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-            //行列matIVへの変換(クォータニオンを行列に適用)
-            q.toMatIV(qtn, qMatrix);
+        count++;
 
-            // トーラスのモデル座標変換行列の生成
-            m.identity(mMatrix);
-            // m.translate(mMatrix, [10.0, 2.0, 0.0], mMatrix);//ここでかくとこの位置で回る
-            m.multiply(mMatrix, qMatrix, mMatrix);
-            m.translate(mMatrix, [0.0, 0.0, -5.0], mMatrix);//ここでかくとここをスタートにして原点の周りをまわる
-            m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-            m.inverse(mMatrix, invMatrix);
+        //まずはトーラス
+        // カウンタを元にラジアンと各種座標を算出
+        var rad = (count % 360) * Math.PI / 180;
+        var tx = Math.cos(rad) * 3.5;
+        var ty = Math.sin(rad) * 3.5;
+        var tz = Math.sin(rad) * 3.5;
 
-            gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
-            gl.uniformMatrix4fv(uniLocation[1], false, mMatrix);
-            gl.uniformMatrix4fv(uniLocation[2], false, invMatrix);
-            gl.uniform3fv(uniLocation[3], lightPosition);
-            gl.uniform4fv(uniLocation[4], ambientColor);
-            gl.uniform3fv(uniLocation[5], camPosition);
 
-            //この第二引数は生の配列を入れる。生成したvboのtIndexでは真っ暗になる。
-            gl.drawElements(gl.TRIANGLES, torusData.i.length, gl.UNSIGNED_SHORT, 0);
-        }
+        //各種四元数の算出
+        q.rotate(0.1* rad, [0,1,0], xQuaternion);
+        //vac3に変換
+        // q.toVecIII(camPosition, xQuaternion, camPosition);
+        // q.toVecIII(camUpDirection, xQuaternion, camUpDirection);
+        //上だとcamPositionとcamUpDirectionが更新されてしまうのでstartをつくったけどこれもだめ
+        // q.toVecIII(camPosStart, xQuaternion, camPosition);
+        // q.toVecIII(camUpDirStart, xQuaternion, camUpDirection);
+        //生の数値でいれないとだめ！！！！！！！
+        q.toVecIII([0.0, 0.0, 10.0], xQuaternion, camPosition);
+        q.toVecIII([0.0, 1.0, 0.0], xQuaternion, camUpDirection);
+
+        // ビュー×プロジェクション座標変換行列
+        // m.lookAt([0.0, 0.0, 3.0], [0, 0, 0], [0, 1, 0], vMatrix);
+        m.lookAt(camPosition, [0, 0, 0], camUpDirection, vMatrix);
+        m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
+        m.multiply(pMatrix, vMatrix, tmpMatrix);
+
+        // トーラスのVBOとIBOをセット   ************
+        set_attribute(tVBOList, attLocation, attStride);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tIndex);
+
+        // トーラスのモデル座標変換行列の生成
+		m.identity(mMatrix);
+        m.translate(mMatrix, [tx, -ty, -tz], mMatrix);
+        // m.rotate(mMatrix, rad, [1, 1, 0], mMatrix);
+        m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+        m.inverse(mMatrix, invMatrix);
+
+        gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+        gl.uniformMatrix4fv(uniLocation[1], false, mMatrix);
+        gl.uniformMatrix4fv(uniLocation[2], false, invMatrix);
+        gl.uniform3fv(uniLocation[3], lightPosition);
+        gl.uniform4fv(uniLocation[4], ambientColor);
+        gl.uniform3fv(uniLocation[5], camPosition);
+
+        //この第二引数は生の配列を入れる。生成したvboのtIndexでは真っ暗になる。
+        gl.drawElements(gl.TRIANGLES, torusData.i.length, gl.UNSIGNED_SHORT, 0);
+
+        //次にスフィア
+        //スフィアのVBOとIBOをセット
+        set_attribute(sVBOList, attLocation, attStride);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sIndex);
+
+        // スフィアのモデル座標変換行列の生成
+		m.identity(mMatrix);
+        m.translate(mMatrix, [-tx, ty, tz], mMatrix);
+        // m.rotate(mMatrix, rad, [1, 1, 0], mMatrix);
+        m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+        m.inverse(mMatrix, invMatrix);
+
+        gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+        gl.uniformMatrix4fv(uniLocation[1], false, mMatrix);
+        gl.uniformMatrix4fv(uniLocation[2], false, invMatrix);
+        //他のuniformはトーラスと同じなので送らなくていい
+
+        gl.drawElements(gl.TRIANGLES, sphereData.i.length, gl.UNSIGNED_SHORT, 0);
+
 
         // コンテキストの再描画
         gl.flush();
@@ -184,9 +220,6 @@ onload = function(){
         setTimeout(arguments.callee, 1000 / 30);
 
     })();
-
-
-
 
 
 
@@ -304,5 +337,4 @@ onload = function(){
     }
 
 }
-
 
