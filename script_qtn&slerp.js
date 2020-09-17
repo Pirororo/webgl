@@ -1,4 +1,4 @@
-//クオータ二オンとminMatrixb.js
+//クオータ二オンと球面線形補間
 //下記のm.multiply(mMatrix, qMatrix, mMatrix);の位置に気をつける！！
 
 // // トーラスのモデル座標変換行列の生成

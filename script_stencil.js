@@ -1,29 +1,52 @@
-//点光源 (平行光源ではない)
-//invMatrix , lightPosition, eyeDorectionは３つセット！！！
-//vboとIboのバインドはdraw内でやってるけどこれはモデルが２つあるからで、１つならこれまで同様draw内でなくてもよい〜
-//明るくするにはhtmlのdiffuseを +0.2 底上げする
-//頂点の位置情報は、通常ローカル座標として頂点シェーダに渡されます。ですから、たとえばモデル座標変換でモデルを移動したり回転させたりしていた場合、頂点の位置は変わってしまいますね。ローカル座標系では(1.0, 1.0, 1.0)にあった頂点であっても、移動や回転を行なったことによって別の座標(たとえば 0.5, 2.0, 5.5 とか)へと変換されている可能性があるわけです。
-//点光源から発された光のライトベクトルは、このモデル座標変換を行なったあとの頂点の位置を考慮したものでなければなりません。ですから、頂点シェーダにはモデル座標変換行列を新たに渡す必要があります。
+//ステンシルバッファ
+// 以下の部分、223~225をオフにするとトーラスとスフィアでてくるんだけどパネルと一緒には出せない。。。パネルとトーラススフィア一緒に出すにはどうするのかな
+// // VBOとIBOをセット   ************
+// set_attribute(vVBOList, attLocation, attStride);
+// gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vIndex);
 
+
+// canvas とクォータニオンをグローバルに扱う
+var c;
+var q = new qtnIV();
+var qt = q.identity(q.create());
+
+// マウスムーブイベントに登録する処理
+function mouseMove(e){
+	var cw = c.width;
+	var ch = c.height;
+	var wh = 1 / Math.sqrt(cw * cw + ch * ch);
+	var x = e.clientX - c.offsetLeft - cw * 0.5;
+	var y = e.clientY - c.offsetTop - ch * 0.5;
+	var sq = Math.sqrt(x * x + y * y);
+	var r = sq * 2.0 * Math.PI * wh;
+	if(sq != 1){
+		sq = 1 / sq;
+		x *= sq;
+		y *= sq;
+	}
+	q.rotate(r, [y, x, 0.0], qt);
+}
 
 onload = function(){
 
     // チェックボックスの参照を取得
 	var che_culling = document.getElementById('cull');
     var che_depth_test = document.getElementById('depth');
-    
-
 
     //canvas 要素への参照を得る *****
-    var c = document.getElementById("canvas");
-
+    // var c = document.getElementById("canvas");
+    c = document.getElementById("canvas");
     c.width = 500;
     c.height = 300;
+
+    // canvas のマウスムーブイベントに処理を登録
+    c.addEventListener('mousemove', mouseMove, true);
+
 
     //コンテキストとは
     //webglコンテキストは
     //canvas 要素からコンテキストオブジェクトを取得するためのメソッドで、引数には文字列で取得したいコンテキストの名称を渡します。
-    var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+    var gl = c.getContext('webgl', {stencil: true})|| c.getContext('experimental-webgl', {stencil: true});
 
 
     //シェーダのコンパイル *****
@@ -39,16 +62,47 @@ onload = function(){
     attLocation[0] = gl.getAttribLocation(prg, 'position');
     attLocation[1] = gl.getAttribLocation(prg, 'normal');
     attLocation[2] = gl.getAttribLocation(prg, 'color');
+    attLocation[3] = gl.getAttribLocation(prg, 'textureCoord');
     // attributeの要素数(この場合は xyz の3要素)
     // attributeの要素数を配列に格納
     var attStride = new Array(3);
     attStride[0] = 3;
     attStride[1] = 3;
     attStride[2] = 4;
+    attStride[3] = 2;
 
     // モデルデータを用意 *****
-    var torusData = torus(64, 64, 0.5, 1.5, [0.75, 0.25, 0.25, 1.0]);
-    var sphereData = sphere(64, 64, 2.0, [0.25, 0.25, 0.75, 1.0]);
+    var torusData = torus(64, 64, 0.5, 1.5);
+    var sphereData = sphere(64, 64, 2.0);
+    // 板ポリゴンの頂点属性
+	var position = [
+		-1.0,  1.0,  0.0,
+		 1.0,  1.0,  0.0,
+		-1.0, -1.0,  0.0,
+		 1.0, -1.0,  0.0
+	];
+	var normal = [
+		0.0, 0.0, 1.0,
+		0.0, 0.0, 1.0,
+		0.0, 0.0, 1.0,
+		0.0, 0.0, 1.0
+	];
+	var color = [
+		1.0, 0.0, 0.0, 1.0,
+		0.0, 1.0, 0.0, 1.0,
+		0.0, 0.0, 1.0, 1.0,
+		1.0, 1.0, 1.0, 1.0
+	];
+	var textureCoord = [
+		0.0, 0.0,
+		1.0, 0.0,
+		0.0, 1.0,
+		1.0, 1.0
+	];
+    var index = [
+		0, 2, 1,
+		2, 3, 1
+    ];
 
     //頂点バッファ( VBO )の生成と通知 *****
     //頂点バッファー処理
@@ -68,6 +122,13 @@ onload = function(){
     var sVBOList = [sPosition, sNormal, sColor];
     var sIndex = create_ibo(sphereData.i);
 
+    var vPosition = create_vbo(position);
+    var vNormal = create_vbo(normal);
+    var vColor = create_vbo(color);
+    var vTextureCoord = create_vbo(textureCoord);
+    var vVBOList = [vPosition, vNormal, vColor, vTextureCoord];
+    var vIndex = create_ibo(index);
+
     // // VBOをバインド
     // set_attribute(tVBOs, attLocation, attStride);
     // // IBOをバインド
@@ -82,8 +143,10 @@ onload = function(){
     uniLocation[2] = gl.getUniformLocation(prg, 'invMatrix');//逆行列
     // uniLocation[2] = gl.getUniformLocation(prg, 'lightDirection');//平行光の方向
     uniLocation[3] = gl.getUniformLocation(prg, 'lightPosition');//点光源の位置
-    uniLocation[4] = gl.getUniformLocation(prg, 'eyeDirection');//目線の方向
-    uniLocation[5] = gl.getUniformLocation(prg, 'ambientColor');//環境光の色
+    uniLocation[4] = gl.getUniformLocation(prg, 'ambientColor');//環境光の色
+    uniLocation[5] = gl.getUniformLocation(prg, 'camPosition');//目線の方向
+
+    uniLocation[6] = gl.getUniformLocation(prg, 'texture');//目線の方向
 
 
 
@@ -104,52 +167,111 @@ onload = function(){
     // var lightDirection = [-0.5, 0.5, 0.5];//向きだからアルファいらない
     // 点光源の位置
     var lightPosition = [0.0, 0.0, 0.0];
-    //  視点ベクトルの向き
-    var eyeDirection = [0.0, 0.0, 20.0];
     // 環境光の色
     var ambientColor = [0.1, 0.1, 0.1, 1.0];//アルファ1.0
-
-    // ビュー×プロジェクション座標変換行列
-    // m.lookAt([0.0, 0.0, 3.0], [0, 0, 0], [0, 1, 0], vMatrix);
-    m.lookAt(eyeDirection, [0, 0, 0], [0, 1, 0], vMatrix);
-    m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
-    m.multiply(pMatrix, vMatrix, tmpMatrix);
-
+    // //  視点ベクトルの向き
+    // var eyeDirection = [0.0, 0.0, 20.0];
+    // カメラの座標
+    var camPosition = [0.0, 0.0, 10.0];
+    // カメラの上方向を表すベクトル
+    var camUpDirection　= [0.0, 1.0, 0.0];
 
 
     // カウンタの宣言
     var count = 0;
 
-    gl.enable(gl.CULL_FACE);
+    //各種フラグを有効にする
+    // gl.enable(gl.CULL_FACE);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);//gl.LEQUAL
+
+
+    // テクスチャ用変数の宣言と生成
+	var texture = null;
+	create_texture('texture.png');
 
     // 恒常ループ
     (function(){
 
+        
         // canvasを初期化する色を設定する
-        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clearColor(0.0, 0.7, 0.7, 1.0);
         gl.clearDepth(1.0);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.clearStencil(0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
 
         count++;
 
         //まずはトーラス
-
         // カウンタを元にラジアンと各種座標を算出
         var rad = (count % 360) * Math.PI / 180;
         var tx = Math.cos(rad) * 3.5;
         var ty = Math.sin(rad) * 3.5;
         var tz = Math.sin(rad) * 3.5;
 
+        // VBOとIBOをセット   ************
+        set_attribute(vVBOList, attLocation, attStride);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, vIndex);
+
+        //行列matIVへの変化(クォータニオンを行列に適用)
+        var qMatrix = m.identity(m.create());
+        q.toMatIV(qt, qMatrix);
+
+        // ビュー×プロジェクション座標変換行列
+        m.lookAt(camPosition, [0, 0, 0], camUpDirection, vMatrix);
+        m.perspective(45, c.width / c.height, 0.1, 100, pMatrix);
+        m.multiply(vMatrix, qMatrix, vMatrix);
+        m.multiply(pMatrix, vMatrix, tmpMatrix);
+
+        // テクスチャをバインドし登録する
+		gl.activeTexture(gl.TEXTURE0);
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.uniform1i(uniLocation[6], 0);
+		
+		// ステンシルテストを有効にする
+        gl.enable(gl.STENCIL_TEST);
+        
+        // 描画:1
+		gl.stencilFunc(gl.ALWAYS, 1, ~0);
+		gl.stencilOp(gl.KEEP, gl.REPLACE, gl.REPLACE);
+		render([-0.25, 0.25, -0.5]);
+		
+		// 描画:2
+		gl.stencilFunc(gl.ALWAYS, 0, ~0);
+		gl.stencilOp(gl.KEEP, gl.INCR, gl.INCR);
+		render([0.0, 0.0, 0.0]);
+		
+		// 描画:3
+		gl.stencilFunc(gl.EQUAL, 2, ~0);
+		gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+        render([0.25, -0.25, 0.5]);
+
+        function render(tr){
+			// モデル座標変換行列の生成
+			m.identity(mMatrix);
+			m.translate(mMatrix, [tr[0], tr[1], tr[2]], mMatrix);
+			m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+			m.inverse(mMatrix, invMatrix);
+			
+			// uniform変数の登録と描画
+			gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix);
+			gl.uniformMatrix4fv(uniLocation[2], false, invMatrix);
+			gl.uniform3fv(uniLocation[3], lightPosition);
+			gl.drawElements(gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
+        }
+        
+        
+        // ステンシルテストを無効にする
+		gl.disable(gl.STENCIL_TEST);
+
         // トーラスのVBOとIBOをセット   ************
         set_attribute(tVBOList, attLocation, attStride);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, tIndex);
 
         // トーラスのモデル座標変換行列の生成
-		m.identity(mMatrix);
-        m.translate(mMatrix, [tx, -ty, -tz], mMatrix);
-        m.rotate(mMatrix, rad, [1, 1, 0], mMatrix);
+        m.identity(mMatrix);
+        m.translate(mMatrix, [2.0, 2.0, 0.0], mMatrix);
+        // m.rotate(mMatrix, rad, [0, 1, 1], mMatrix);
         m.multiply(tmpMatrix, mMatrix, mvpMatrix);
         m.inverse(mMatrix, invMatrix);
 
@@ -157,8 +279,8 @@ onload = function(){
         gl.uniformMatrix4fv(uniLocation[1], false, mMatrix);
         gl.uniformMatrix4fv(uniLocation[2], false, invMatrix);
         gl.uniform3fv(uniLocation[3], lightPosition);
-        gl.uniform3fv(uniLocation[4], eyeDirection);
-        gl.uniform4fv(uniLocation[5], ambientColor);
+        gl.uniform4fv(uniLocation[4], ambientColor);
+        gl.uniform3fv(uniLocation[5], camPosition);
 
         //この第二引数は生の配列を入れる。生成したvboのtIndexでは真っ暗になる。
         gl.drawElements(gl.TRIANGLES, torusData.i.length, gl.UNSIGNED_SHORT, 0);
@@ -170,8 +292,8 @@ onload = function(){
 
         // スフィアのモデル座標変換行列の生成
 		m.identity(mMatrix);
-        m.translate(mMatrix, [-tx, ty, tz], mMatrix);
-        m.rotate(mMatrix, rad, [1, 1, 0], mMatrix);
+        m.translate(mMatrix, [-2.0, -2.0, 0.0], mMatrix);
+        // m.rotate(mMatrix, rad, [1, 1, 0], mMatrix);
         m.multiply(tmpMatrix, mMatrix, mvpMatrix);
         m.inverse(mMatrix, invMatrix);
 
@@ -181,6 +303,7 @@ onload = function(){
         //他のuniformはトーラスと同じなので送らなくていい
 
         gl.drawElements(gl.TRIANGLES, sphereData.i.length, gl.UNSIGNED_SHORT, 0);
+
 
 
         // コンテキストの再描画
@@ -305,96 +428,33 @@ onload = function(){
         return ibo;
     }
 
-    //HSV から RGB への変換を行なう関数
-    function hsva(h, s, v, a){
-        if(s > 1 || v > 1 || a > 1){return;}
-        var th = h % 360;
-        var i = Math.floor(th / 60);
-        var f = th / 60 - i;
-        var m = v * (1 - s);
-        var n = v * (1 - s * f);
-        var k = v * (1 - s * (1 - f));
-        var color = new Array();
-        if(!s > 0 && !s < 0){
-            color.push(v, v, v, a); 
-        } else {
-            var r = new Array(v, n, m, m, k, v);
-            var g = new Array(k, v, v, n, m, m);
-            var b = new Array(m, m, k, v, v, n);
-            color.push(r[i], g[i], b[i], a);
-        }
-        return color;
-    }
+    // テクスチャを生成する関数,ソースは画像のアドレス
+    function create_texture(source){
+        // イメージオブジェクトの生成
+        var img = new Image();
+        // イメージオブジェクトのソースを指定
+        img.src = source;
 
-    function torus(row, column, irad, orad, color){
-        var pos = new Array(), nor = new Array(), col = new Array(), idx = new Array();
-        for(var i = 0; i <= row; i++){
-            var r = Math.PI * 2 / row * i;
-            var rr = Math.cos(r);
-            var ry = Math.sin(r);
-            for(var ii = 0; ii <= column; ii++){
-                var tr = Math.PI * 2 / column * ii;
-                var tx = (rr * irad + orad) * Math.cos(tr);
-                var ty = ry * irad;
-                var tz = (rr * irad + orad) * Math.sin(tr);
-                var rx = Math.cos(tr);
-                var rz = Math.sin(tr);
-                if(color){
-					var tc = color;
-				}else{
-					tc = hsva(360 / column * ii, 1, 1, 1);
-				}
-                pos.push(tx, ty, tz);
-                nor.push(rx, ry, rz);
-                col.push(tc[0], tc[1], tc[2], tc[3]);
-            }
-        }
-        for(i = 0; i < row; i++){
-            for(ii = 0; ii < column; ii++){
-                r = (column + 1) * i + ii;
-                idx.push(r, r + column + 1, r + 1);
-                idx.push(r + column + 1, r + column + 2, r + 1);
-            }
-        }
-        // return [pos, nor, col, idx];
-        return {p : pos, n : nor, c : col, i : idx};
-    }
-
-    // 球体を生成する関数
-function sphere(row, column, rad, color){//緯度//経度//半径
-    var pos = new Array(), nor = new Array(),
-        col = new Array(), idx = new Array();
-    for(var i = 0; i <= row; i++){
-        var r = Math.PI / row * i;
-        var ry = Math.cos(r);
-        var rr = Math.sin(r);
-        for(var ii = 0; ii <= column; ii++){
-            var tr = Math.PI * 2 / column * ii;
-            var tx = rr * rad * Math.cos(tr);
-            var ty = ry * rad;
-            var tz = rr * rad * Math.sin(tr);
-            var rx = rr * Math.cos(tr);
-            var rz = rr * Math.sin(tr);
-            if(color){
-                var tc = color;
-            }else{
-                tc = hsva(360 / row * i, 1, 1, 1);
-            }
-            pos.push(tx, ty, tz);
-            nor.push(rx, ry, rz);
-            col.push(tc[0], tc[1], tc[2], tc[3]);
+        // データのオンロードをトリガーにする
+        //画像が読み込まれたと同時にテクスチャに関する処理が自動的に実行されるようになります。
+        img.onload = function(){
+            //テクスチャオブジェクトの生成
+            var tex = gl.createTexture();
+            //テクスチャオブジェクトをwebglにバインドする
+            //第一引数にはテクスチャの種類を表す組み込み定数を指定しますが、いわゆる普通の二次元画像フォーマットであればこの引数には gl.TEXTURE_2D を常に指定します。第二引数にはバインドするテクスチャオブジェクトを指定
+            gl.bindTexture(gl.TEXTURE_2D,tex);
+            //画像をテクスチャオブジェクトにバインド
+            //第一引数は bindTexture でも使ったテクスチャの種類を指定します。ここでも組み込み定数 gl.TEXTURE_2D を使えば問題ありません。第二引数はミップマップのレベルを指定、第三引数と第四引数には同じ組み込み定数 gl.RGBA を指定、第五引数の gl.UNSIGNED_BYTE についても特別な理由がない限りこのままで大丈夫です。
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+            // ミップマップを生成
+            //あらかじめ小さいサイズの画像もつくっておく（イメージ縮小表示のときのみに対応）
+            gl.generateMipmap(gl.TEXTURE_2D);
+            // テクスチャのバインドを無効化
+            gl.bindTexture(gl.TEXTURE_2D, null);
+            // 生成したテクスチャをグローバル変数に代入
+            texture = tex;
         }
     }
-    r = 0;
-    for(i = 0; i < row; i++){
-        for(ii = 0; ii < column; ii++){
-            r = (column + 1) * i + ii;
-            idx.push(r, r + 1, r + column + 2);
-            idx.push(r, r + column + 2, r + column + 1);
-        }
-    }
-    return {p : pos, n : nor, c : col, i : idx};
-}
 
 
 
